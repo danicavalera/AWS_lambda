@@ -119,14 +119,91 @@ def recommend_portfolio(intent_request):
     """
 
     first_name = get_slots(intent_request)["firstName"]
-    age = get_slots(intent_request)["age"]
+    age = int(get_slots(intent_request)["age"])
     investment_amount = get_slots(intent_request)["investmentAmount"]
     risk_level = get_slots(intent_request)["riskLevel"]
     source = intent_request["invocationSource"]
 
-    # YOUR CODE GOES HERE!
+def validate_data(first_name, age, investment_amount, risk_level, intent_request):
 
+    # The 'firstName' should only contain letters and no numbers or special characters. Creating this validation also changing the slot type to AMAZON.AlphaNumeric instead of AMAZON.US.First_Name
+    if first_name is not None:
+        if not first_name.isalpha():
+            return build_validation_result(False, 'firstName', "Please type your first name again. This should only consists of letters, and it cannot include numbers and/or special characters.")
+            
+    if age is not None:
+        age = parse_int(age)
+        if age <= 0:
+            return build_validation_result(
+                False,
+                'age',
+                "You must be over 0 years old for this service")
+        elif age >= 65:
+            return build_validation_result(
+                False,
+                'age',
+                "You must be less than 65 years old for this service")
+                
+    if investment_amount is not None:
+        investment_amount = parse_int(investment_amount)
+        is_investment_amount_valid = investment_amount >= 5000
+        if not is_investment_amount_valid:
+            violatedSlot = "investmentAmount"
+            message = "The amount you entered does not meet the minimum investment amount of $5000. Please enter new amount."
+            return build_validation_result(is_investment_amount_valid, violatedSlot, message)
+    if risk_level is not None:
+        if not risk_level.lower() in ['none', 'low', 'medium', 'high']:
+            violatedSlot = 'riskLevel'
+            message = "Invalid. Please choose, none, low, medium or high for risk level."
+            return build_validation_result(False, violatedSlot, message)
 
+    return build_validation_result (True, None, None)
+
+def investment_recommendation(risk_level):
+    recommendation_result = ''
+    if risk_level.lower()  == 'none':
+        recommendation_result = '100% bonds (AGG), 0% equities (SPY)'
+    elif risk_level.lower()  == 'low':
+        recommendation_result = '60% bonds (AGG), 40% equities (SPY)'
+    elif risk_level.lower()  == 'medium':
+        recommendation_result = '40% bonds (AGG), 60% equities (SPY)'
+    elif risk_level.lower()  == 'high':
+        recommendation_result = '20% bonds (AGG), 80% equities (SPY)'
+    return recommendation_result
+
+### Intents Handlers ###
+def recommend_portfolio(intent_request):
+    """
+    Performs dialog management and fulfillment for recommending a portfolio.
+    """
+
+    input_first_name = get_slots(intent_request)["firstName"]
+    input_age = get_slots(intent_request)["age"]
+    input_investment_amount = get_slots(intent_request)["investmentAmount"]
+    input_risk_level = get_slots(intent_request)["riskLevel"]
+    source = intent_request["invocationSource"]
+    
+    if source == 'DialogCodeHook':
+        slots = get_slots(intent_request)
+        validation_result = validate_data(input_first_name, input_age, input_investment_amount, input_risk_level, intent_request)
+     
+        if not validation_result['isValid']:
+            slots[validation_result['violatedSlot']] = None
+            return elicit_slot(intent_request['sessionAttributes'],
+                intent_request['currentIntent']['name'],
+                slots, 
+                validation_result['violatedSlot'],
+                validation_result['message'])
+        output_session_attributes = intent_request['sessionAttributes'] if intent_request['sessionAttributes'] is not None else {}
+        return delegate(output_session_attributes, get_slots(intent_request))
+  
+    recommendation_result = investment_recommendation(input_risk_level)
+    return close(intent_request['sessionAttributes'],
+                 'Fulfilled',
+                 {'contentType': 'PlainText',
+                  'content': 'Given your risk level - {}. We recommend this investment: {}. Thank you, {}, for using RoboAdvisor. '.format(input_risk_level, recommendation_result, input_first_name)})
+
+    
 ### Intents Dispatcher ###
 def dispatch(intent_request):
     """
